@@ -14,13 +14,20 @@ import (
 	"unicode/utf8"
 
 	"github.com/acarl005/stripansi"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 	"golang.org/x/xerrors"
 
-	"github.com/coder/coder/cli/clibase"
-	"github.com/coder/coder/pty"
-	"github.com/coder/coder/testutil"
+	"github.com/aymanbagabas/go-pty"
+)
+
+const (
+	WaitShort     = time.Second * 10
+	WaitMedium    = time.Second * 15
+	WaitLong      = time.Second * 25
+	WaitSuperLong = time.Minute
+	IntervalFast  = time.Millisecond * 25
 )
 
 func New(t *testing.T, opts ...pty.Option) *PTY {
@@ -89,7 +96,7 @@ func newExpecter(t *testing.T, r io.Reader, name string) outExpecter {
 	}
 	// Set the actual close function for the outExpecter.
 	ex.close = func(reason string) error {
-		ctx, cancel := context.WithTimeout(context.Background(), testutil.WaitShort)
+		ctx, cancel := context.WithTimeout(context.Background(), WaitShort)
 		defer cancel()
 
 		ex.logf("closing expecter: %s", reason)
@@ -147,7 +154,7 @@ type outExpecter struct {
 func (e *outExpecter) ExpectMatch(str string) string {
 	e.t.Helper()
 
-	timeout, cancel := context.WithTimeout(context.Background(), testutil.WaitMedium)
+	timeout, cancel := context.WithTimeout(context.Background(), WaitMedium)
 	defer cancel()
 
 	return e.ExpectMatchContext(timeout, str)
@@ -303,7 +310,7 @@ func (e *outExpecter) doMatchWithDeadline(ctx context.Context, name string, fn f
 	// A timeout is mandatory, caller can decide by passing a context
 	// that times out.
 	if _, ok := ctx.Deadline(); !ok {
-		timeout := testutil.WaitMedium
+		timeout := WaitMedium
 		e.logf("%s ctx has no deadline, using %s", name, timeout)
 		var cancel context.CancelFunc
 		//nolint:gocritic // Rule guard doesn't detect that we're using testutil.Wait*.
@@ -368,12 +375,12 @@ func (p *PTY) Close() error {
 	return eErr
 }
 
-func (p *PTY) Attach(inv *clibase.Invocation) *PTY {
+func (p *PTY) Attach(inv *cobra.Command) *PTY {
 	p.t.Helper()
 
-	inv.Stdout = p.Output()
-	inv.Stderr = p.Output()
-	inv.Stdin = p.Input()
+	inv.SetOut(p.Output())
+	inv.SetErr(p.Output())
+	inv.SetIn(p.Input())
 	return p
 }
 

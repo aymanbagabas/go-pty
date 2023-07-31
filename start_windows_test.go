@@ -8,8 +8,8 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/coder/coder/pty"
-	"github.com/coder/coder/pty/ptytest"
+	"github.com/aymanbagabas/go-pty"
+	"github.com/aymanbagabas/go-pty/ptytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"

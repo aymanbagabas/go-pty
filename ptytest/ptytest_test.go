@@ -1,16 +1,16 @@
 package ptytest_test
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
-	"github.com/coder/coder/cli/clibase"
-	"github.com/coder/coder/pty/ptytest"
-	"github.com/coder/coder/testutil"
+	"github.com/aymanbagabas/go-pty/ptytest"
 )
 
 func TestPtytest(t *testing.T) {
@@ -29,7 +29,8 @@ func TestPtytest(t *testing.T) {
 			t.Skip("ReadLine is glitchy on windows when it comes to the final line of output it seems")
 		}
 
-		ctx := testutil.Context(t, testutil.WaitLong)
+		ctx, cancel := context.WithTimeout(context.Background(), ptytest.WaitLong)
+		t.Cleanup(cancel)
 		pty := ptytest.New(t)
 
 		// The PTY expands these to \r\n (even on linux).
@@ -59,18 +60,16 @@ func TestPtytest(t *testing.T) {
 			tt := tt
 			// nolint:paralleltest // Avoid parallel test to more easily identify the issue.
 			t.Run(tt.name, func(t *testing.T) {
-				cmd := &clibase.Cmd{
+				inv := &cobra.Command{
 					Use: "test",
-					Handler: func(inv *clibase.Invocation) error {
-						fmt.Fprint(inv.Stdout, tt.output)
-						return nil
+					RunE: func(cmd *cobra.Command, _ []string) error {
+						_, err := fmt.Fprint(cmd.OutOrStdout(), tt.output)
+						return err
 					},
 				}
-
-				inv := cmd.Invoke()
 				pty := ptytest.New(t)
 				pty.Attach(inv)
-				err := inv.Run()
+				err := inv.Execute()
 				require.NoError(t, err)
 			})
 		}

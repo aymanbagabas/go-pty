@@ -38,16 +38,16 @@ func newPty(opt ...Option) (retPTY *otherPty, err error) {
 		}
 	}()
 
-	if opts.sshReq != nil {
+	if opts.setSize || opts.sshModes != nil {
 		err = opty.control(opty.tty, func(fd uintptr) error {
-			return applyTerminalModesToFd(opts.logger, fd, *opts.sshReq)
+			return applyTerminalModesToFd(fd, int(opts.height), int(opts.width), opts.sshModes, opts.logger)
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return opty, nil
+	return opty, err
 }
 
 type otherPty struct {
@@ -92,8 +92,8 @@ func (p *otherPty) Name() string {
 	return p.name
 }
 
-func (p *otherPty) Input() ReadWriter {
-	return ReadWriter{
+func (p *otherPty) Input() io.ReadWriter {
+	return readWriter{
 		Reader: p.tty,
 		Writer: p.pty,
 	}
@@ -103,8 +103,8 @@ func (p *otherPty) InputWriter() io.Writer {
 	return p.pty
 }
 
-func (p *otherPty) Output() ReadWriter {
-	return ReadWriter{
+func (p *otherPty) Output() io.ReadWriter {
+	return readWriter{
 		Reader: &ptmReader{p.pty},
 		Writer: p.tty,
 	}

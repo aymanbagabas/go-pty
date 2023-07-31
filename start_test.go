@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/coder/coder/pty"
-	"github.com/coder/coder/testutil"
+	"github.com/aymanbagabas/go-pty"
+	"github.com/aymanbagabas/go-pty/ptytest"
 )
 
 // Test_Start_copy tests that we can use io.Copy() on command output
@@ -22,7 +22,7 @@ import (
 func Test_Start_copy(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), testutil.WaitShort)
+	ctx, cancel := context.WithTimeout(context.Background(), ptytest.WaitShort)
 	defer cancel()
 
 	pc, cmd, err := pty.Start(pty.CommandContext(ctx, cmdEcho, argEcho...))
@@ -60,7 +60,7 @@ func Test_Start_copy(t *testing.T) {
 func Test_Start_truncation(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), testutil.WaitSuperLong)
+	ctx, cancel := context.WithTimeout(context.Background(), ptytest.WaitSuperLong)
 	defer cancel()
 
 	pc, cmd, err := pty.Start(pty.CommandContext(ctx, cmdCount, argCount...))
@@ -84,7 +84,7 @@ func Test_Start_truncation(t *testing.T) {
 				// we're not done reading.  We want to slow our reads so that
 				// if there is a race between reading the data and it being
 				// truncated, we will lose and fail the test.
-				time.Sleep(testutil.IntervalFast)
+				time.Sleep(ptytest.IntervalFast)
 			}
 		}
 		// ensure we still get to EOF
@@ -117,7 +117,7 @@ func Test_Start_truncation(t *testing.T) {
 func Test_Start_cancel_context(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), testutil.WaitMedium)
+	ctx, cancel := context.WithTimeout(context.Background(), ptytest.WaitMedium)
 	defer cancel()
 	cmdCtx, cmdCancel := context.WithCancel(ctx)
 

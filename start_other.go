@@ -4,7 +4,6 @@ package pty
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"strings"
 	"syscall"
@@ -24,11 +23,10 @@ func startPty(cmdPty *Cmd, opt ...StartOption) (retPTY *otherPty, proc Process, 
 	}
 
 	origEnv := cmdPty.Env
-	if opty.opts.sshReq != nil {
-		cmdPty.Env = append(cmdPty.Env, fmt.Sprintf("SSH_TTY=%s", opty.Name()))
-	}
-	if opty.opts.setGPGTTY {
-		cmdPty.Env = append(cmdPty.Env, fmt.Sprintf("GPG_TTY=%s", opty.Name()))
+	if len(opty.opts.envs) > 0 {
+		for _, e := range opty.opts.envs {
+			cmdPty.Env = append(cmdPty.Env, e+"="+opty.Name())
+		}
 	}
 	if cmdPty.Context == nil {
 		cmdPty.Context = context.Background()

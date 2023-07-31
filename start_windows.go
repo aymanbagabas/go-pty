@@ -4,7 +4,6 @@
 package pty
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -57,8 +56,10 @@ func startPty(cmd *Cmd, opt ...StartOption) (_ PTYCmd, _ Process, retErr error) 
 			_ = winPty.Close()
 		}
 	}()
-	if winPty.opts.sshReq != nil {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("SSH_TTY=%s", winPty.Name()))
+	if len(winPty.opts.envs) > 0 {
+		for _, e := range winPty.opts.envs {
+			cmd.Env = append(cmd.Env, e+"="+winPty.Name())
+		}
 	}
 
 	attrs, err := windows.NewProcThreadAttributeList(1)

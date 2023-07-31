@@ -55,8 +55,8 @@ func newPty(opt ...Option) (*ptyWindows, error) {
 	}
 
 	consoleSize := uintptr(80) + (uintptr(80) << 16)
-	if opts.sshReq != nil {
-		consoleSize = uintptr(opts.sshReq.Window.Width) + (uintptr(opts.sshReq.Window.Height) << 16)
+	if opts.setSize {
+		consoleSize = uintptr(opts.width) + (uintptr(opts.height) << 16)
 	}
 	ret, _, err := procCreatePseudoConsole.Call(
 		consoleSize,
@@ -103,8 +103,8 @@ func (p *ptyWindows) Name() string {
 	return ""
 }
 
-func (p *ptyWindows) Output() ReadWriter {
-	return ReadWriter{
+func (p *ptyWindows) Output() io.ReadWriter {
+	return readWriter{
 		Reader: p.outputRead,
 		Writer: p.outputWrite,
 	}
@@ -114,8 +114,8 @@ func (p *ptyWindows) OutputReader() io.Reader {
 	return p.outputRead
 }
 
-func (p *ptyWindows) Input() ReadWriter {
-	return ReadWriter{
+func (p *ptyWindows) Input() io.ReadWriter {
+	return readWriter{
 		Reader: p.inputRead,
 		Writer: p.inputWrite,
 	}
