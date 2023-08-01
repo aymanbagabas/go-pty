@@ -2,9 +2,7 @@ package pty
 
 import (
 	"io"
-	"log"
 
-	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/xerrors"
 )
 
@@ -18,7 +16,7 @@ type PTYCmd interface {
 	io.Closer
 
 	// Resize sets the size of the PTY.
-	Resize(height uint16, width uint16) error
+	Resize(width int, height int) error
 
 	// OutputReader returns an io.Reader for reading the output from the process
 	// controlled by the pseudo-TTY
@@ -36,7 +34,7 @@ type PTY interface {
 	io.Closer
 
 	// Resize sets the size of the PTY.
-	Resize(height uint16, width uint16) error
+	Resize(width int, height int) error
 
 	// Name of the TTY. Example on Linux would be "/dev/pts/1".
 	Name() string
@@ -80,67 +78,34 @@ type WithFlags interface {
 	EchoEnabled() (bool, error)
 }
 
+// Controllable represents a PTY that can be controlled via the syscall.RawConn
+// interface.
+type Controllable interface {
+	PTY
+
+	// ControlPTY allows the caller to control the PTY via the syscall.RawConn interface.
+	ControlPTY(func(uintptr) error) error
+
+	// ControlTTY allows the caller to control the TTY via the syscall.RawConn interface.
+	ControlTTY(func(uintptr) error) error
+}
+
 // Options represents a an option for a PTY.
 type Option func(*ptyOptions)
 
 type ptyOptions struct {
-	logger  *log.Logger
 	setSize bool
 
-	height   uint16
-	width    uint16
-	envs     []string
-	sshModes gossh.TerminalModes
+	height int
+	width  int
 }
 
 // WithSize sets the size of the PTY.
-func WithSize(height uint16, width uint16) Option {
+func WithSize(width int, height int) Option {
 	return func(opts *ptyOptions) {
 		opts.setSize = true
 		opts.height = height
 		opts.width = width
-	}
-}
-
-// WithTTYEnviron sets the PTY name to the given environment variables.
-// This is useful when the PTY is used to run a command that needs to know
-// the name of the PTY. For example, SSHD and GPG set the SSH_TTY and GPG_TTY
-// environment variables to the PTY name.
-func WithTTYEnviron(envs ...string) Option {
-	return func(opts *ptyOptions) {
-		opts.envs = envs
-	}
-}
-
-// WithSSHTTY sets the SSH_TTY environment variable to the PTY name.
-// This is a convenience function for WithTTYEnviron.
-func WithSSHTTY() Option {
-	return func(opts *ptyOptions) {
-		opts.envs = append(opts.envs, "SSH_TTY")
-	}
-}
-
-// WithSSHTerminalModes applies the ssh.TerminalModes to the PTY.
-// This only applies to non-Windows platforms.
-func WithSSHTerminalModes(modes gossh.TerminalModes) Option {
-	return func(opts *ptyOptions) {
-		opts.sshModes = modes
-	}
-}
-
-// WithLogger sets a logger for logging errors.
-func WithLogger(logger *log.Logger) Option {
-	return func(opts *ptyOptions) {
-		opts.logger = logger
-	}
-}
-
-// WithGPGTTY sets the GPG_TTY environment variable to the PTY name. This only
-// applies to non-Windows platforms.
-// This is a convenience function for WithTTYEnviron.
-func WithGPGTTY() Option {
-	return func(opts *ptyOptions) {
-		opts.envs = append(opts.envs, "GPG_TTY")
 	}
 }
 

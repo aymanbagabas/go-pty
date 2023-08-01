@@ -44,17 +44,6 @@ func TestStart(t *testing.T) {
 		err = pty.Close()
 		require.NoError(t, err)
 	})
-
-	t.Run("SSH_TTY", func(t *testing.T) {
-		t.Parallel()
-		opts := pty.WithPTYOption(pty.WithSize(24, 80), pty.WithSSHTTY())
-		pty, ps := ptytest.Start(t, pty.Command("env"), opts)
-		pty.ExpectMatch("SSH_TTY=/dev/")
-		err := ps.Wait()
-		require.NoError(t, err)
-		err = pty.Close()
-		require.NoError(t, err)
-	})
 }
 
 // these constants/vars are used by Test_Start_copy

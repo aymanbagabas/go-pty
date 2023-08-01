@@ -1,6 +1,6 @@
 //go:build !windows
 
-package pty
+package ssh
 
 import (
 	"log"
@@ -71,12 +71,7 @@ var terminalModeFlagNames = map[uint8]string{
 	ssh.TTY_OP_OSPEED: "tty_op_ospeed",
 }
 
-// applyTerminalModesToFd applies the terminal settings from the SSH
-// request to the given fd.
-//
-// This is based on code from Tailscale's tailssh package:
-// https://github.com/tailscale/tailscale/blob/main/ssh/tailssh/incubator.go
-func applyTerminalModesToFd(fd uintptr, height int, width int, modes ssh.TerminalModes, logger *log.Logger) error {
+func applyTerminalModesToFd(fd uintptr, width int, height int, modes ssh.TerminalModes, logger *log.Logger) error {
 	if modes == nil {
 		modes = ssh.TerminalModes{}
 	}

@@ -22,12 +22,14 @@ func startPty(cmdPty *Cmd, opt ...StartOption) (retPTY *otherPty, proc Process, 
 		return nil, nil, xerrors.Errorf("newPty failed: %w", err)
 	}
 
-	origEnv := cmdPty.Env
-	if len(opty.opts.envs) > 0 {
-		for _, e := range opty.opts.envs {
-			cmdPty.Env = append(cmdPty.Env, e+"="+opty.Name())
+	if opts.ptyCb != nil {
+		if err := opts.ptyCb(opty, cmdPty); err != nil {
+			_ = opty.Close()
+			return nil, nil, xerrors.Errorf("pty callback failed: %w", err)
 		}
 	}
+
+	origEnv := cmdPty.Env
 	if cmdPty.Context == nil {
 		cmdPty.Context = context.Background()
 	}

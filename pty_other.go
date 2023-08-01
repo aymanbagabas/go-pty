@@ -38,11 +38,8 @@ func newPty(opt ...Option) (retPTY *otherPty, err error) {
 		}
 	}()
 
-	if opts.setSize || opts.sshModes != nil {
-		err = opty.control(opty.tty, func(fd uintptr) error {
-			return applyTerminalModesToFd(fd, int(opts.height), int(opts.width), opts.sshModes, opts.logger)
-		})
-		if err != nil {
+	if opts.setSize {
+		if err := opty.Resize(opts.width, opts.height); err != nil {
 			return nil, err
 		}
 	}
@@ -57,6 +54,14 @@ type otherPty struct {
 	pty, tty *os.File
 	opts     ptyOptions
 	name     string
+}
+
+func (p *otherPty) ControlPTY(fn func(fd uintptr) error) error {
+	return p.control(p.pty, fn)
+}
+
+func (p *otherPty) ControlTTY(fn func(fd uintptr) error) error {
+	return p.control(p.tty, fn)
 }
 
 func (p *otherPty) control(tty *os.File, fn func(fd uintptr) error) (err error) {
@@ -114,12 +119,12 @@ func (p *otherPty) OutputReader() io.Reader {
 	return &ptmReader{p.pty}
 }
 
-func (p *otherPty) Resize(height uint16, width uint16) error {
+func (p *otherPty) Resize(width int, height int) error {
 	return p.control(p.pty, func(fd uintptr) error {
 		return termios.SetWinSize(fd, &termios.Winsize{
 			Winsize: unix.Winsize{
-				Row: height,
-				Col: width,
+				Row: uint16(height),
+				Col: uint16(width),
 			},
 		})
 	})

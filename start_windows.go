@@ -56,9 +56,9 @@ func startPty(cmd *Cmd, opt ...StartOption) (_ PTYCmd, _ Process, retErr error) 
 			_ = winPty.Close()
 		}
 	}()
-	if len(winPty.opts.envs) > 0 {
-		for _, e := range winPty.opts.envs {
-			cmd.Env = append(cmd.Env, e+"="+winPty.Name())
+	if opts.ptyCb != nil {
+		if err := opts.ptyCb(winPty, cmd); err != nil {
+			return nil, nil, xerrors.Errorf("pty callback failed: %w", err)
 		}
 	}
 

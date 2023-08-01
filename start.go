@@ -10,12 +10,25 @@ type StartOption func(*startOptions)
 
 type startOptions struct {
 	ptyOpts []Option
+	ptyCb   PTYCallback
 }
 
 // WithPTYOption applies the given options to the underlying PTY.
 func WithPTYOption(opts ...Option) StartOption {
 	return func(o *startOptions) {
 		o.ptyOpts = append(o.ptyOpts, opts...)
+	}
+}
+
+// PTYCallback is a function that is called with the Cmd and the PTY before the
+// command is started.  This allows the caller to modify the PTY and Cmd before
+// the command is started.
+type PTYCallback func(PTY, *Cmd) error
+
+// WithPTYCallback allows the caller to modify the Cmd before it is started.
+func WithPTYCallback(fn PTYCallback) StartOption {
+	return func(o *startOptions) {
+		o.ptyCb = fn
 	}
 }
 

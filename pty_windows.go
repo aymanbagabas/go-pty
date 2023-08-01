@@ -125,7 +125,7 @@ func (p *ptyWindows) InputWriter() io.Writer {
 	return p.inputWrite
 }
 
-func (p *ptyWindows) Resize(height uint16, width uint16) error {
+func (p *ptyWindows) Resize(width int, height int) error {
 	// hold the lock, so we don't race with anyone trying to close the console
 	p.closeMutex.Lock()
 	defer p.closeMutex.Unlock()
