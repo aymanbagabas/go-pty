@@ -98,9 +98,9 @@ type windowsProcess struct {
 
 // Name returns the TTY name on Windows.
 //
-// Not implemented.
+// See: https://github.com/PowerShell/openssh-portable/blob/2bbcffac6e9bb23e792dbed0b129e35a23afe720/contrib/win32/win32compat/win32_sshpty.c#L36
 func (p *ptyWindows) Name() string {
-	return ""
+	return "windows-pty"
 }
 
 func (p *ptyWindows) Output() io.ReadWriter {

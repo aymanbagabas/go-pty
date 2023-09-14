@@ -13,6 +13,7 @@ require (
 	golang.org/x/crypto v0.12.0
 	golang.org/x/exp v0.0.0-20230728194245-b0cb94b80691
 	golang.org/x/sys v0.12.0
+	golang.org/x/term v0.11.0
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
 )
 

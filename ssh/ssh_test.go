@@ -3,6 +3,7 @@ package ssh_test
 import (
 	"io"
 	"log"
+	"runtime"
 	"testing"
 
 	"github.com/aymanbagabas/go-pty"
@@ -13,6 +14,9 @@ import (
 )
 
 func TestSSH(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
 	t.Run("SSH_TTY", func(t *testing.T) {
 		t.Parallel()
 		h, w := 24, 80
