@@ -15,7 +15,7 @@ func notifySizeChanges(chan os.Signal) {}
 
 // windows doesn't support SIGWINCH, so we need to poll the terminal size
 // periodically.
-func handlePtySize(p PTY) {
+func handlePtySize(p PTY, _ chan os.Signal) {
 	for {
 		time.Sleep(2 * time.Second)
 
