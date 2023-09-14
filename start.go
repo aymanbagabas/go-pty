@@ -2,6 +2,7 @@ package pty
 
 import (
 	"context"
+	"os"
 	"os/exec"
 )
 
@@ -50,7 +51,7 @@ func CommandContext(ctx context.Context, name string, arg ...string) *Cmd {
 		Context: ctx,
 		Path:    name,
 		Args:    append([]string{name}, arg...),
-		Env:     make([]string, 0),
+		Env:     os.Environ(),
 	}
 }
 
