@@ -1,14 +1,17 @@
-//go:build !windows
-
-package ssh
+package pty
 
 import (
-	"log"
-
-	"github.com/u-root/u-root/pkg/termios"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/xerrors"
 )
+
+// ApplyTerminalModes applies the given ssh terminal modes to the given file
+// descriptor.
+func ApplyTerminalModes(fd int, width int, height int, modes ssh.TerminalModes) error {
+	if modes == nil {
+		return nil
+	}
+	return applyTerminalModesToFd(fd, width, height, modes)
+}
 
 // terminalModeFlagNames maps the SSH terminal mode flags to mnemonic
 // names used by the termios package.
@@ -69,57 +72,4 @@ var terminalModeFlagNames = map[uint8]string{
 	ssh.PARODD:        "parodd",
 	ssh.TTY_OP_ISPEED: "tty_op_ispeed",
 	ssh.TTY_OP_OSPEED: "tty_op_ospeed",
-}
-
-func applyTerminalModesToFd(fd uintptr, width int, height int, modes ssh.TerminalModes, logger *log.Logger) error {
-	if modes == nil {
-		modes = ssh.TerminalModes{}
-	}
-
-	// Get the current TTY configuration.
-	tios, err := termios.GTTY(int(fd))
-	if err != nil {
-		return xerrors.Errorf("GTTY: %w", err)
-	}
-
-	// Apply the modes from the SSH request.
-	tios.Row = height
-	tios.Col = width
-
-	for c, v := range modes {
-		if c == ssh.TTY_OP_ISPEED {
-			tios.Ispeed = int(v)
-			continue
-		}
-		if c == ssh.TTY_OP_OSPEED {
-			tios.Ospeed = int(v)
-			continue
-		}
-		k, ok := terminalModeFlagNames[c]
-		if !ok {
-			if logger != nil {
-				logger.Printf("unknown terminal mode: %d", c)
-			}
-			continue
-		}
-		if _, ok := tios.CC[k]; ok {
-			tios.CC[k] = uint8(v)
-			continue
-		}
-		if _, ok := tios.Opts[k]; ok {
-			tios.Opts[k] = v > 0
-			continue
-		}
-
-		if logger != nil {
-			logger.Printf("unsupported terminal mode: k=%s, c=%d, v=%d", k, c, v)
-		}
-	}
-
-	// Save the new TTY configuration.
-	if _, err := tios.STTY(int(fd)); err != nil {
-		return xerrors.Errorf("STTY: %w", err)
-	}
-
-	return nil
 }

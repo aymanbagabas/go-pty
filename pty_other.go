@@ -1,203 +1,131 @@
 //go:build !windows
+// +build !windows
 
 package pty
 
 import (
-	"io"
-	"io/fs"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
-	"runtime"
-	"sync"
 
 	"github.com/creack/pty"
-	"github.com/u-root/u-root/pkg/termios"
 	"golang.org/x/sys/unix"
-	"golang.org/x/xerrors"
 )
 
-func newPty(opt ...Option) (retPTY *otherPty, err error) {
-	var opts ptyOptions
-	for _, o := range opt {
-		o(&opts)
+// PosixPty is a POSIX compliant pseudo-terminal.
+// See: https://pubs.opengroup.org/onlinepubs/9699919799/
+type PosixPty struct {
+	master, slave *os.File
+	closed        bool
+}
+
+var _ Pty = &PosixPty{}
+
+// Close implements Pty.
+func (p *PosixPty) Close() error {
+	if p.closed {
+		return nil
+	}
+	defer func() {
+		p.closed = true
+	}()
+	return errors.Join(p.master.Close(), p.slave.Close())
+}
+
+// Command implements Pty.
+func (p *PosixPty) Command(name string, args ...string) *Cmd {
+	cmd := exec.Command(name, args...)
+	c := &Cmd{
+		pty:  p,
+		sys:  cmd,
+		Path: name,
+		Args: append([]string{name}, args...),
+	}
+	c.sys = cmd
+	return c
+}
+
+// CommandContext implements Pty.
+func (p *PosixPty) CommandContext(ctx context.Context, name string, args ...string) *Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	c := p.Command(name, args...)
+	c.ctx = ctx
+	c.Cancel = func() error {
+		return cmd.Cancel()
+	}
+	return c
+}
+
+// Name implements Pty.
+func (p *PosixPty) Name() string {
+	return p.slave.Name()
+}
+
+// Read implements Pty.
+func (p *PosixPty) Read(b []byte) (n int, err error) {
+	return p.master.Read(b)
+}
+
+func (p *PosixPty) Control(f func(fd uintptr)) error {
+	conn, err := p.master.SyscallConn()
+	if err != nil {
+		return err
+	}
+	return conn.Control(f)
+}
+
+// Master returns the pseudo-terminal master end (pty).
+func (p *PosixPty) Master() *os.File {
+	return p.master
+}
+
+// Slave returns the pseudo-terminal slave end (tty).
+func (p *PosixPty) Slave() *os.File {
+	return p.slave
+}
+
+// Winsize represents the terminal window size.
+type Winsize = unix.Winsize
+
+// SetWinsize sets the pseudo-terminal window size.
+func (p *PosixPty) SetWinsize(ws *Winsize) error {
+	var ctrlErr error
+	if err := p.Control(func(fd uintptr) {
+		ctrlErr = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, ws)
+	}); err != nil {
+		return err
 	}
 
-	ptyFile, ttyFile, err := pty.Open()
+	return ctrlErr
+}
+
+// Resize implements Pty.
+func (p *PosixPty) Resize(width int, height int) error {
+	return p.SetWinsize(&Winsize{
+		Row: uint16(height),
+		Col: uint16(width),
+	})
+}
+
+// Write implements Pty.
+func (p *PosixPty) Write(b []byte) (n int, err error) {
+	return p.master.Write(b)
+}
+
+// Fd implements Pty.
+func (p *PosixPty) Fd() uintptr {
+	return p.master.Fd()
+}
+
+func newPty() (Pty, error) {
+	master, slave, err := pty.Open()
 	if err != nil {
 		return nil, err
 	}
-	opty := &otherPty{
-		pty:  ptyFile,
-		tty:  ttyFile,
-		opts: opts,
-		name: ttyFile.Name(),
-	}
-	defer func() {
-		if err != nil {
-			_ = opty.Close()
-		}
-	}()
 
-	if opts.setSize {
-		if err := opty.Resize(opts.width, opts.height); err != nil {
-			return nil, err
-		}
-	}
-
-	return opty, err
-}
-
-type otherPty struct {
-	mutex    sync.Mutex
-	closed   bool
-	err      error
-	pty, tty *os.File
-	opts     ptyOptions
-	name     string
-}
-
-func (p *otherPty) ControlPTY(fn func(fd uintptr) error) error {
-	return p.control(p.pty, fn)
-}
-
-func (p *otherPty) ControlTTY(fn func(fd uintptr) error) error {
-	return p.control(p.tty, fn)
-}
-
-func (p *otherPty) control(tty *os.File, fn func(fd uintptr) error) (err error) {
-	defer func() {
-		// Always echo the close error for closed ptys.
-		p.mutex.Lock()
-		defer p.mutex.Unlock()
-		if p.closed {
-			err = p.err
-		}
-	}()
-
-	rawConn, err := tty.SyscallConn()
-	if err != nil {
-		return err
-	}
-
-	var ctlErr error
-	err = rawConn.Control(func(fd uintptr) {
-		ctlErr = fn(fd)
-	})
-	switch {
-	case err != nil:
-		return err
-	case ctlErr != nil:
-		return ctlErr
-	default:
-		return nil
-	}
-}
-
-func (p *otherPty) Name() string {
-	return p.name
-}
-
-func (p *otherPty) Input() io.ReadWriter {
-	return readWriter{
-		Reader: p.tty,
-		Writer: p.pty,
-	}
-}
-
-func (p *otherPty) InputWriter() io.Writer {
-	return p.pty
-}
-
-func (p *otherPty) Output() io.ReadWriter {
-	return readWriter{
-		Reader: &ptmReader{p.pty},
-		Writer: p.tty,
-	}
-}
-
-func (p *otherPty) OutputReader() io.Reader {
-	return &ptmReader{p.pty}
-}
-
-func (p *otherPty) Resize(width int, height int) error {
-	return p.control(p.pty, func(fd uintptr) error {
-		return termios.SetWinSize(fd, &termios.Winsize{
-			Winsize: unix.Winsize{
-				Row: uint16(height),
-				Col: uint16(width),
-			},
-		})
-	})
-}
-
-func (p *otherPty) Close() error {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	if p.closed {
-		return p.err
-	}
-	p.closed = true
-
-	err := p.pty.Close()
-	// tty is closed & unset if we Start() a new process
-	if p.tty != nil {
-		err2 := p.tty.Close()
-		if err == nil {
-			err = err2
-		}
-	}
-
-	if err != nil {
-		p.err = err
-	} else {
-		p.err = ErrClosed
-	}
-
-	return err
-}
-
-type otherProcess struct {
-	pty *os.File
-	cmd *exec.Cmd
-
-	// cmdDone protects access to cmdErr: anything reading cmdErr should read from cmdDone first.
-	cmdDone chan any
-	cmdErr  error
-}
-
-func (p *otherProcess) Wait() error {
-	<-p.cmdDone
-	return p.cmdErr
-}
-
-func (p *otherProcess) Kill() error {
-	return p.cmd.Process.Kill()
-}
-
-func (p *otherProcess) waitInternal() {
-	// The GC can garbage collect the TTY FD before the command
-	// has finished running. See:
-	// https://github.com/creack/pty/issues/127#issuecomment-932764012
-	p.cmdErr = p.cmd.Wait()
-	runtime.KeepAlive(p.pty)
-	close(p.cmdDone)
-}
-
-// ptmReader wraps a reference to the ptm side of a pseudo-TTY for portability
-type ptmReader struct {
-	ptm io.Reader
-}
-
-func (r *ptmReader) Read(p []byte) (n int, err error) {
-	n, err = r.ptm.Read(p)
-	// output from the ptm will hit a PathErr when the process hangs up the
-	// other side (typically when the process exits, but could be earlier).  For
-	// portability, and to fit with our use of io.Copy() to copy from the PTY,
-	// we want to translate this error into io.EOF
-	pathErr := &fs.PathError{}
-	if xerrors.As(err, &pathErr) {
-		return n, io.EOF
-	}
-	return n, err
+	return &PosixPty{
+		master: master,
+		slave:  slave,
+	}, nil
 }
