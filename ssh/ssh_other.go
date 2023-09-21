@@ -3,11 +3,11 @@
 package ssh
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/u-root/u-root/pkg/termios"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/xerrors"
 )
 
 // terminalModeFlagNames maps the SSH terminal mode flags to mnemonic
@@ -79,7 +79,7 @@ func applyTerminalModesToFd(fd uintptr, width int, height int, modes ssh.Termina
 	// Get the current TTY configuration.
 	tios, err := termios.GTTY(int(fd))
 	if err != nil {
-		return xerrors.Errorf("GTTY: %w", err)
+		return fmt.Errorf("GTTY: %w", err)
 	}
 
 	// Apply the modes from the SSH request.
@@ -118,7 +118,7 @@ func applyTerminalModesToFd(fd uintptr, width int, height int, modes ssh.Termina
 
 	// Save the new TTY configuration.
 	if _, err := tios.STTY(int(fd)); err != nil {
-		return xerrors.Errorf("STTY: %w", err)
+		return fmt.Errorf("STTY: %w", err)
 	}
 
 	return nil

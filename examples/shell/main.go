@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
+	"time"
 
 	"github.com/aymanbagabas/go-pty"
 	"golang.org/x/term"
@@ -15,14 +18,32 @@ type PTY interface {
 }
 
 func test() error {
-	// Create arbitrary command.
-	c := pty.Command(`bash`)
-
-	// Start the command with a pty.
-	ptmx, proc, err := pty.Start(c)
+	ptmx, tty, err := pty.Open()
 	if err != nil {
 		return err
 	}
+
+	// Create arbitrary command.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, `bash`)
+	// c.Stdin = tty
+	// c.Stdout = tty
+	// c.Stderr = tty
+
+	defer func() {
+		_ = ptmx.Close()
+		_ = tty.Close()
+	}()
+
+	// Start the command with a pty.
+	ptmx, err = pty.Start(c)
+	if err != nil {
+		return err
+	}
+	// if err := c.Start(); err != nil {
+	// 	return err
+	// }
 	// Make sure to close the pty at the end.
 	defer func() { _ = ptmx.Close() }() // Best effort.
 
@@ -42,10 +63,10 @@ func test() error {
 
 	// Copy stdin to the pty and the pty to stdout.
 	// NOTE: The goroutine will keep reading until the next keystroke before returning.
-	go func() { _, _ = io.Copy(ptmx.InputWriter(), os.Stdin) }()
-	_, _ = io.Copy(os.Stdout, ptmx.OutputReader())
+	go io.Copy(ptmx, os.Stdin)
+	go io.Copy(os.Stdout, ptmx)
 
-	return proc.Wait()
+	return c.Wait()
 }
 
 func main() {

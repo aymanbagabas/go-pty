@@ -3,12 +3,12 @@
 package ssh
 
 import (
+	"fmt"
 	"log"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/xerrors"
 )
 
 func applyTerminalModesToFd(fd uintptr, width int, height int, modes ssh.TerminalModes, logger *log.Logger) error {
-	return xerrors.Errorf("not implemented")
+	return fmt.Errorf("not implemented")
 }
