@@ -14,7 +14,7 @@ func (c *Cmd) start() error {
 	if !ok {
 		return ErrInvalidCommand
 	}
-	pty, ok := c.pty.(*PosixPty)
+	pty, ok := c.pty.(*UnixPty)
 	if !ok {
 		return ErrInvalidCommand
 	}
