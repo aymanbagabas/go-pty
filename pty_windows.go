@@ -1,262 +1,174 @@
 //go:build windows
+// +build windows
 
 package pty
 
 import (
 	"context"
-	"io"
+	"errors"
+	"fmt"
 	"os"
-	"os/exec"
 	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+)
 
-	"golang.org/x/xerrors"
+const (
+	_PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x20016 // nolint:revive
 )
 
 var (
-	kernel32                = windows.NewLazySystemDLL("kernel32.dll")
-	procResizePseudoConsole = kernel32.NewProc("ResizePseudoConsole")
-	procCreatePseudoConsole = kernel32.NewProc("CreatePseudoConsole")
-	procClosePseudoConsole  = kernel32.NewProc("ClosePseudoConsole")
+	errClosedConPty = errors.New("pseudo console is closed")
+	errNotStarted   = errors.New("process not started")
 )
 
+// Install this from github.com/Microsoft/go-winio
+// go install github.com/Microsoft/go-winio/tools/mkwinsyscall@latest
+//go:generate mkwinsyscall -output zsyscall_windows.go ./*.go
+
+// ConPty is a Windows console pseudo-terminal.
+// It uses Windows pseudo console API to create a console that can be used to
+// start processes attached to it.
+//
 // See: https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
-func newPty(opt ...Option) (*ptyWindows, error) {
-	var opts ptyOptions
-	for _, o := range opt {
-		o(&opts)
-	}
+type ConPty struct {
+	handle          windows.Handle
+	inPipe, outPipe *os.File
+	mtx             sync.RWMutex
+}
 
-	// We use the CreatePseudoConsole API which was introduced in build 17763
-	vsn := windows.RtlGetVersion()
-	if vsn.MajorVersion < 10 ||
-		vsn.BuildNumber < 17763 {
-		// If the CreatePseudoConsole API is not available, we fall back to a simpler
-		// implementation that doesn't create an actual PTY - just uses os.Pipe
-		return nil, xerrors.Errorf("pty not supported")
-	}
+var _ Pty = &ConPty{}
 
-	pty := &ptyWindows{
-		opts: opts,
-	}
-
-	var err error
-	pty.inputRead, pty.inputWrite, err = os.Pipe()
+func newPty() (Pty, error) {
+	ptyIn, inPipeOurs, err := os.Pipe()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create pipes for pseudo console: %w", err)
 	}
-	pty.outputRead, pty.outputWrite, err = os.Pipe()
+
+	outPipeOurs, ptyOut, err := os.Pipe()
 	if err != nil {
-		_ = pty.inputRead.Close()
-		_ = pty.inputWrite.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to create pipes for pseudo console: %w", err)
 	}
 
-	consoleSize := uintptr(80) + (uintptr(80) << 16)
-	if opts.setSize {
-		consoleSize = uintptr(opts.width) + (uintptr(opts.height) << 16)
-	}
-	ret, _, err := procCreatePseudoConsole.Call(
-		consoleSize,
-		uintptr(pty.inputRead.Fd()),
-		uintptr(pty.outputWrite.Fd()),
-		0,
-		uintptr(unsafe.Pointer(&pty.console)),
-	)
-	// CreatePseudoConsole returns S_OK on success, as per:
-	// https://learn.microsoft.com/en-us/windows/console/createpseudoconsole
-	if windows.Handle(ret) != windows.S_OK {
-		_ = pty.Close()
-		return nil, xerrors.Errorf("create pseudo console (%d): %w", int32(ret), err)
+	var hpc windows.Handle
+	coord := windows.Coord{X: 80, Y: 25}
+	err = createPseudoConsole(coord, windows.Handle(ptyIn.Fd()), windows.Handle(ptyOut.Fd()), 0, &hpc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pseudo console: %w", err)
 	}
 
-	return pty, nil
-}
-
-type ptyWindows struct {
-	opts    ptyOptions
-	console windows.Handle
-
-	outputWrite *os.File
-	outputRead  *os.File
-	inputWrite  *os.File
-	inputRead   *os.File
-
-	closeMutex sync.Mutex
-	closed     bool
-}
-
-type windowsProcess struct {
-	// cmdDone protects access to cmdErr: anything reading cmdErr should read from cmdDone first.
-	cmdDone chan any
-	cmdErr  error
-	proc    *os.Process
-	pw      *ptyWindows
-}
-
-// Name returns the TTY name on Windows.
-//
-// Not implemented.
-func (p *ptyWindows) Name() string {
-	return ""
-}
-
-func (p *ptyWindows) Output() io.ReadWriter {
-	return readWriter{
-		Reader: p.outputRead,
-		Writer: p.outputWrite,
+	if err := ptyOut.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close pseudo console handle: %w", err)
 	}
-}
-
-func (p *ptyWindows) OutputReader() io.Reader {
-	return p.outputRead
-}
-
-func (p *ptyWindows) Input() io.ReadWriter {
-	return readWriter{
-		Reader: p.inputRead,
-		Writer: p.inputWrite,
+	if err := ptyIn.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close pseudo console handle: %w", err)
 	}
+
+	return &ConPty{
+		handle:  hpc,
+		inPipe:  inPipeOurs,
+		outPipe: outPipeOurs,
+	}, nil
 }
 
-func (p *ptyWindows) InputWriter() io.Writer {
-	return p.inputWrite
+// Close implements Pty.
+func (p *ConPty) Close() error {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+
+	closePseudoConsole(p.handle)
+	return errors.Join(p.inPipe.Close(), p.outPipe.Close())
 }
 
-func (p *ptyWindows) Resize(width int, height int) error {
-	// hold the lock, so we don't race with anyone trying to close the console
-	p.closeMutex.Lock()
-	defer p.closeMutex.Unlock()
-	if p.closed || p.console == windows.InvalidHandle {
-		return ErrClosed
+// Command implements Pty.
+func (p *ConPty) Command(name string, args ...string) *Cmd {
+	c := &Cmd{
+		pty:  p,
+		Path: name,
+		Args: append([]string{name}, args...),
 	}
-	// Taken from: https://github.com/microsoft/hcsshim/blob/54a5ad86808d761e3e396aff3e2022840f39f9a8/internal/winapi/zsyscall_windows.go#L144
-	ret, _, err := procResizePseudoConsole.Call(uintptr(p.console), uintptr(*((*uint32)(unsafe.Pointer(&windows.Coord{
-		Y: int16(height),
-		X: int16(width),
-	})))))
-	if windows.Handle(ret) != windows.S_OK {
-		return err
+	return c
+}
+
+// CommandContext implements Pty.
+func (p *ConPty) CommandContext(ctx context.Context, name string, args ...string) *Cmd {
+	if ctx == nil {
+		panic("nil context")
+	}
+	c := p.Command(name, args...)
+	c.ctx = ctx
+	c.Cancel = func() error {
+		return c.Process.Kill()
+	}
+	return c
+}
+
+// Name implements Pty.
+func (*ConPty) Name() string {
+	return "windows-pty"
+}
+
+// Read implements Pty.
+func (p *ConPty) Read(b []byte) (n int, err error) {
+	return p.outPipe.Read(b)
+}
+
+// Resize implements Pty.
+func (p *ConPty) Resize(width int, height int) error {
+	p.mtx.RLock()
+	defer p.mtx.RUnlock()
+	if err := resizePseudoConsole(p.handle, windows.Coord{X: int16(height), Y: int16(width)}); err != nil {
+		return fmt.Errorf("failed to resize pseudo console: %w", err)
 	}
 	return nil
 }
 
-// closeConsoleNoLock closes the console handle, and sets it to
-// windows.InvalidHandle. It must be called with p.closeMutex held.
-func (p *ptyWindows) closeConsoleNoLock() error {
-	// if we are running a command in the PTY, the corresponding *windowsProcess
-	// may have already closed the PseudoConsole when the command exited, so that
-	// output reads can get to EOF.  In that case, we don't need to close it
-	// again here.
-	if p.console != windows.InvalidHandle {
-		// ClosePseudoConsole has no return value and typically the syscall
-		// returns S_FALSE (a success value). We could ignore the return value
-		// and error here but we handle anyway, it just in case.
-		//
-		// Note that ClosePseudoConsole is a blocking system call and may write
-		// a final frame to the output buffer (p.outputWrite), so there must be
-		// a consumer (p.outputRead) to ensure we don't block here indefinitely.
-		//
-		// https://docs.microsoft.com/en-us/windows/console/closepseudoconsole
-		ret, _, err := procClosePseudoConsole.Call(uintptr(p.console))
-		if winerrorFailed(ret) {
-			return xerrors.Errorf("close pseudo console (%d): %w", ret, err)
-		}
-		p.console = windows.InvalidHandle
+// Write implements Pty.
+func (p *ConPty) Write(b []byte) (n int, err error) {
+	return p.inPipe.Write(b)
+}
+
+// Fd implements Pty.
+func (p *ConPty) Fd() uintptr {
+	p.mtx.RLock()
+	defer p.mtx.RUnlock()
+	return uintptr(p.handle)
+}
+
+// updateProcThreadAttribute updates the passed in attribute list to contain the entry necessary for use with
+// CreateProcess.
+func (p *ConPty) updateProcThreadAttribute(attrList *windows.ProcThreadAttributeListContainer) error {
+	p.mtx.RLock()
+	defer p.mtx.RUnlock()
+
+	if p.handle == 0 {
+		return errClosedConPty
+	}
+
+	if err := attrList.Update(
+		_PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+		unsafe.Pointer(p.handle),
+		unsafe.Sizeof(p.handle),
+	); err != nil {
+		return fmt.Errorf("failed to update proc thread attributes for pseudo console: %w", err)
 	}
 
 	return nil
 }
 
-func (p *ptyWindows) Close() error {
-	p.closeMutex.Lock()
-	defer p.closeMutex.Unlock()
-	if p.closed {
-		return nil
-	}
-
-	// Close the pseudo console, this will also terminate the process attached
-	// to this pty. If it was created via Start(), this also unblocks close of
-	// the readers below.
-	err := p.closeConsoleNoLock()
-	if err != nil {
-		return err
-	}
-
-	// Only set closed after the console has been successfully closed.
-	p.closed = true
-
-	// Close the pipes ensuring that the writer is closed before the respective
-	// reader, otherwise closing the reader may block indefinitely. Note that
-	// outputWrite and inputRead are unset when we Start() a new process.
-	if p.outputWrite != nil {
-		_ = p.outputWrite.Close()
-	}
-	_ = p.outputRead.Close()
-	_ = p.inputWrite.Close()
-	if p.inputRead != nil {
-		_ = p.inputRead.Close()
-	}
-	return nil
+// createPseudoConsole creates a windows pseudo console.
+func createPseudoConsole(size windows.Coord, hInput windows.Handle, hOutput windows.Handle, dwFlags uint32, hpcon *windows.Handle) error {
+	// We need this wrapper as the function takes a COORD struct and not a pointer to one, so we need to cast to something beforehand.
+	return _createPseudoConsole(*((*uint32)(unsafe.Pointer(&size))), hInput, hOutput, dwFlags, hpcon)
 }
 
-func (p *windowsProcess) waitInternal() {
-	// put this on the bottom of the defer stack since the next defer can write to p.cmdErr
-	defer close(p.cmdDone)
-	defer func() {
-		// close the pseudoconsole handle when the process exits, if it hasn't already been closed.
-		// this is important because the PseudoConsole (conhost.exe) holds the write-end
-		// of the output pipe.  If it is not closed, reads on that pipe will block, even though
-		// the command has exited.
-		// c.f. https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/
-		p.pw.closeMutex.Lock()
-		defer p.pw.closeMutex.Unlock()
-
-		err := p.pw.closeConsoleNoLock()
-		// if we already have an error from the command, prefer that error
-		// but if the command succeeded and closing the PseudoConsole fails
-		// then record that error so that we have a chance to see it
-		if err != nil && p.cmdErr == nil {
-			p.cmdErr = err
-		}
-	}()
-
-	state, err := p.proc.Wait()
-	if err != nil {
-		p.cmdErr = err
-		return
-	}
-	if !state.Success() {
-		p.cmdErr = &exec.ExitError{ProcessState: state}
-		return
-	}
+// resizePseudoConsole resizes the internal buffers of the pseudo console to the width and height specified in `size`.
+func resizePseudoConsole(hpcon windows.Handle, size windows.Coord) error {
+	// We need this wrapper as the function takes a COORD struct and not a pointer to one, so we need to cast to something beforehand.
+	return _resizePseudoConsole(hpcon, *((*uint32)(unsafe.Pointer(&size))))
 }
 
-func (p *windowsProcess) Wait() error {
-	<-p.cmdDone
-	return p.cmdErr
-}
-
-func (p *windowsProcess) Kill() error {
-	return p.proc.Kill()
-}
-
-// killOnContext waits for the context to be done and kills the process, unless it exits on its own first.
-func (p *windowsProcess) killOnContext(ctx context.Context) {
-	select {
-	case <-p.cmdDone:
-		return
-	case <-ctx.Done():
-		p.Kill()
-	}
-}
-
-// winerrorFailed returns true if the syscall failed, this function
-// assumes the return value is a 32-bit integer, like HRESULT.
-//
-// https://learn.microsoft.com/en-us/windows/win32/api/winerror/nf-winerror-failed
-func winerrorFailed(r1 uintptr) bool {
-	return int32(r1) < 0
-}
+//sys _createPseudoConsole(size uint32, hInput windows.Handle, hOutput windows.Handle, dwFlags uint32, hpcon *windows.Handle) (hr error) = kernel32.CreatePseudoConsole
+//sys _resizePseudoConsole(hPc windows.Handle, size uint32) (hr error) = kernel32.ResizePseudoConsole
+//sys closePseudoConsole(hpc windows.Handle) = kernel32.ClosePseudoConsole
