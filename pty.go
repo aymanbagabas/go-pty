@@ -9,6 +9,9 @@ import (
 var (
 	// ErrInvalidCommand is returned when the command is invalid.
 	ErrInvalidCommand = errors.New("pty: invalid command")
+
+	// ErrUnsupported is returned when the platform is unsupported.
+	ErrUnsupported = errors.New("pty: unsupported platform")
 )
 
 // New returns a new pseudo-terminal.
