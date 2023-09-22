@@ -50,6 +50,7 @@ func (p *UnixPty) Command(name string, args ...string) *Cmd {
 func (p *UnixPty) CommandContext(ctx context.Context, name string, args ...string) *Cmd {
 	cmd := exec.CommandContext(ctx, name, args...)
 	c := p.Command(name, args...)
+	c.sys = cmd
 	c.ctx = ctx
 	c.Cancel = func() error {
 		return cmd.Cancel()
