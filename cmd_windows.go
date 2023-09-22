@@ -181,8 +181,10 @@ func (c *Cmd) waitOnContext() {
 	sys := c.sys.(*conPtySys)
 	select {
 	case <-c.ctx.Done():
-		_ = c.Cancel()
-		sys.cmdErr = c.ctx.Err()
+		sys.cmdErr = c.Cancel()
+		if sys.cmdErr == nil {
+			sys.cmdErr = c.ctx.Err()
+		}
 	case err := <-sys.done:
 		sys.cmdErr = err
 	}
