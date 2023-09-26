@@ -41,7 +41,7 @@ func main() {
 
 			go func() {
 				for win := range winCh {
-					pseudo.Resize(win.Height, win.Width)
+					pseudo.Resize(win.Width, win.Height)
 				}
 			}()
 
