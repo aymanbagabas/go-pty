@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
@@ -35,26 +34,18 @@ func (p *UnixPty) Close() error {
 
 // Command implements Pty.
 func (p *UnixPty) Command(name string, args ...string) *Cmd {
-	cmd := exec.Command(name, args...)
 	c := &Cmd{
 		pty:  p,
-		sys:  cmd,
 		Path: name,
 		Args: append([]string{name}, args...),
 	}
-	c.sys = cmd
 	return c
 }
 
 // CommandContext implements Pty.
 func (p *UnixPty) CommandContext(ctx context.Context, name string, args ...string) *Cmd {
-	cmd := exec.CommandContext(ctx, name, args...)
 	c := p.Command(name, args...)
-	c.sys = cmd
 	c.ctx = ctx
-	c.Cancel = func() error {
-		return cmd.Cancel()
-	}
 	return c
 }
 
