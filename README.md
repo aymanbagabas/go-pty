@@ -8,6 +8,10 @@
 
 Go-Pty is a package for using pseudo-terminal interfaces in Go. It supports Unix PTYs and Windows through [ConPty](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session).
 
+## Why can't we just use os/exec?
+
+Windows requires updating the process running in the PTY with a [special attribute](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session) to enable ConPty support. This is not possible with os/exec see [go#62708](https://github.com/golang/go/issues/62708) and [go#6271](https://github.com/golang/go/pull/62710). On Unix, `pty.Cmd` is just a wrapper around `os/exec.Cmd` that sets up the PTY.
+
 ## Usage
 
 ```sh
