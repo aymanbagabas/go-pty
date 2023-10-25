@@ -15,7 +15,7 @@ func (c *Cmd) start() error {
 		return errors.New("exec: already started")
 	}
 
-	pty, ok := c.pty.(*UnixPty)
+	pty, ok := c.pty.(*unixPty)
 	if !ok {
 		return ErrInvalidCommand
 	}

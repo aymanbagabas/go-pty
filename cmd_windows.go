@@ -24,7 +24,7 @@ type conPtySys struct {
 }
 
 func (c *Cmd) start() error {
-	pty, ok := c.pty.(*ConPty)
+	pty, ok := c.pty.(*conPty)
 	if !ok {
 		return ErrInvalidCommand
 	}

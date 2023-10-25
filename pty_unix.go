@@ -12,17 +12,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// UnixPty is a POSIX compliant Unix pseudo-terminal.
+// unixPty is a POSIX compliant Unix pseudo-terminal.
 // See: https://pubs.opengroup.org/onlinepubs/9699919799/
-type UnixPty struct {
+type unixPty struct {
 	master, slave *os.File
 	closed        bool
 }
 
-var _ Pty = &UnixPty{}
+var _ Pty = &unixPty{}
 
 // Close implements Pty.
-func (p *UnixPty) Close() error {
+func (p *unixPty) Close() error {
 	if p.closed {
 		return nil
 	}
@@ -33,7 +33,7 @@ func (p *UnixPty) Close() error {
 }
 
 // Command implements Pty.
-func (p *UnixPty) Command(name string, args ...string) *Cmd {
+func (p *unixPty) Command(name string, args ...string) *Cmd {
 	c := &Cmd{
 		pty:  p,
 		Path: name,
@@ -43,23 +43,28 @@ func (p *UnixPty) Command(name string, args ...string) *Cmd {
 }
 
 // CommandContext implements Pty.
-func (p *UnixPty) CommandContext(ctx context.Context, name string, args ...string) *Cmd {
+func (p *unixPty) CommandContext(ctx context.Context, name string, args ...string) *Cmd {
 	c := p.Command(name, args...)
 	c.ctx = ctx
 	return c
 }
 
 // Name implements Pty.
-func (p *UnixPty) Name() string {
+func (p *unixPty) Name() string {
 	return p.slave.Name()
 }
 
 // Read implements Pty.
-func (p *UnixPty) Read(b []byte) (n int, err error) {
+func (p *unixPty) Read(b []byte) (n int, err error) {
 	return p.master.Read(b)
 }
 
-func (p *UnixPty) Control(f func(fd uintptr)) error {
+// Control implements UnixPty.
+func (p *unixPty) Control(f func(fd uintptr)) error {
+	return p.control(f)
+}
+
+func (p *unixPty) control(f func(fd uintptr)) error {
 	conn, err := p.master.SyscallConn()
 	if err != nil {
 		return err
@@ -67,23 +72,23 @@ func (p *UnixPty) Control(f func(fd uintptr)) error {
 	return conn.Control(f)
 }
 
-// Master returns the pseudo-terminal master end (pty).
-func (p *UnixPty) Master() *os.File {
+// Master implements UnixPty.
+func (p *unixPty) Master() *os.File {
 	return p.master
 }
 
-// Slave returns the pseudo-terminal slave end (tty).
-func (p *UnixPty) Slave() *os.File {
+// Slave implements UnixPty.
+func (p *unixPty) Slave() *os.File {
 	return p.slave
 }
 
 // Winsize represents the terminal window size.
 type Winsize = unix.Winsize
 
-// SetWinsize sets the pseudo-terminal window size.
-func (p *UnixPty) SetWinsize(ws *Winsize) error {
+// SetWinsize implements UnixPty.
+func (p *unixPty) SetWinsize(ws *Winsize) error {
 	var ctrlErr error
-	if err := p.Control(func(fd uintptr) {
+	if err := p.control(func(fd uintptr) {
 		ctrlErr = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, ws)
 	}); err != nil {
 		return err
@@ -93,7 +98,7 @@ func (p *UnixPty) SetWinsize(ws *Winsize) error {
 }
 
 // Resize implements Pty.
-func (p *UnixPty) Resize(width int, height int) error {
+func (p *unixPty) Resize(width int, height int) error {
 	return p.SetWinsize(&Winsize{
 		Row: uint16(height),
 		Col: uint16(width),
@@ -101,22 +106,22 @@ func (p *UnixPty) Resize(width int, height int) error {
 }
 
 // Write implements Pty.
-func (p *UnixPty) Write(b []byte) (n int, err error) {
+func (p *unixPty) Write(b []byte) (n int, err error) {
 	return p.master.Write(b)
 }
 
 // Fd implements Pty.
-func (p *UnixPty) Fd() uintptr {
+func (p *unixPty) Fd() uintptr {
 	return p.master.Fd()
 }
 
-func newPty() (Pty, error) {
+func newPty() (UnixPty, error) {
 	master, slave, err := pty.Open()
 	if err != nil {
 		return nil, err
 	}
 
-	return &UnixPty{
+	return &unixPty{
 		master: master,
 		slave:  slave,
 	}, nil

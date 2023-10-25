@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 )
 
 var (
@@ -44,4 +45,32 @@ type Pty interface {
 	// On Unix, this will return the file descriptor of the master end.
 	// On Windows, this will return the handle of the console.
 	Fd() uintptr
+}
+
+// UnixPty is a Unix pseudo-terminal interface.
+type UnixPty interface {
+	Pty
+
+	// Master returns the pseudo-terminal master end (pty).
+	Master() *os.File
+
+	// Slave returns the pseudo-terminal slave end (tty).
+	Slave() *os.File
+
+	// Control calls f on the pseudo-terminal master end (pty).
+	Control(f func(fd uintptr)) error
+
+	// SetWinsize sets the pseudo-terminal window size.
+	SetWinsize(ws *Winsize) error
+}
+
+// ConPty is a Windows ConPTY interface.
+type ConPty interface {
+	Pty
+
+	// InputPipe returns the ConPty input pipe.
+	InputPipe() *os.File
+
+	// OutputPipe returns the ConPty output pipe.
+	OutputPipe() *os.File
 }
