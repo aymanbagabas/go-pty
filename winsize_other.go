@@ -3,7 +3,7 @@
 
 package pty
 
-// Winsize is used to set the size of a terminal.
+// Winsize represents the terminal window size.
 type Winsize struct {
 	Row    uint16
 	Col    uint16
