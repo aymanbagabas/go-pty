@@ -11,5 +11,5 @@ require (
 	github.com/creack/pty v1.1.15
 	github.com/u-root/u-root v0.11.0
 	golang.org/x/crypto v0.14.0
-	golang.org/x/sys v0.13.0
+	golang.org/x/sys v0.14.0
 )
