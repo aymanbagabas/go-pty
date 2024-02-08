@@ -1,9 +1,9 @@
 github.com/creack/pty v1.1.21 h1:1/QdRyBaHHJP61QkWMXlOIBfsgdDeeKfK8SYVUWJKf0=
 github.com/creack/pty v1.1.21/go.mod h1:MOBLtS5ELjhRRrroQr9kyvTxUAFNvYEK993ew/Vr4O4=
-github.com/hugelgupf/vmtest v0.0.0-20240102225328-693afabdd27f h1:ov45/OzrJG8EKbGjn7jJZQJTN7Z1t73sFYNIRd64YlI=
+github.com/hugelgupf/vmtest v0.0.0-20240127073930-89f92b39a1fa h1:2q0UvEA7TSTrjU4aFrpF6u28tHat3KnCkqsy/gB86v0=
 github.com/u-root/gobusybox/src v0.0.0-20231228173702-b69f654846aa h1:unMPGGK/CRzfg923allsikmvk2l7beBeFPUNC4RVX/8=
-github.com/u-root/u-root v0.12.0 h1:K0AuBFriwr0w/PGS3HawiAw89e3+MU7ks80GpghAsNs=
-github.com/u-root/u-root v0.12.0/go.mod h1:FYjTOh4IkIZHhjsd17lb8nYW6udgXdJhG1c0r6u0arI=
+github.com/u-root/u-root v0.13.0 h1:/1+vJHGLKChB6pcyJsTuHTEXCL3tmWDZ2LgCvta4YnA=
+github.com/u-root/u-root v0.13.0/go.mod h1:YVsWXhneYu0CGWX7RNlpOPbrR4/qaHKaRvDC/o9IvzE=
 golang.org/x/crypto v0.19.0 h1:ENy+Az/9Y1vSrlrvBSyna3PITt4tiZLf7sgCjZBX7Wo=
 golang.org/x/crypto v0.19.0/go.mod h1:Iy9bg/ha4yyC70EfRS8jz+B6ybOBKMaSxLj6P6oBDfU=
 golang.org/x/mod v0.14.0 h1:dGoOF9QVLYng8IHTm7BAyWqCqSheQ5pYWGhzW00YJr0=
