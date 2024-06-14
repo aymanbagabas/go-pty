@@ -6,21 +6,13 @@ package pty
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
-	"sync"
-	"unsafe"
 
-	"golang.org/x/sys/windows"
-)
-
-const (
-	_PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x20016 // nolint:revive
+	"github.com/aymanbagabas/go-pty/conpty"
 )
 
 var (
-	errClosedConPty = errors.New("pseudo console is closed")
-	errNotStarted   = errors.New("process not started")
+	errNotStarted = errors.New("process not started")
 )
 
 // conPty is a Windows console pseudo-terminal.
@@ -29,52 +21,18 @@ var (
 //
 // See: https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
 type conPty struct {
-	handle          windows.Handle
-	inPipe, outPipe *os.File
-	mtx             sync.RWMutex
+	*conpty.ConPty
 }
 
 var _ Pty = &conPty{}
 
 func newPty() (ConPty, error) {
-	ptyIn, inPipeOurs, err := os.Pipe()
+	c, err := conpty.New(conpty.DefaultWidth, conpty.DefaultHeight, 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create pipes for pseudo console: %w", err)
+		return nil, err
 	}
 
-	outPipeOurs, ptyOut, err := os.Pipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pipes for pseudo console: %w", err)
-	}
-
-	var hpc windows.Handle
-	coord := windows.Coord{X: 80, Y: 25}
-	err = windows.CreatePseudoConsole(coord, windows.Handle(ptyIn.Fd()), windows.Handle(ptyOut.Fd()), 0, &hpc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pseudo console: %w", err)
-	}
-
-	if err := ptyOut.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close pseudo console handle: %w", err)
-	}
-	if err := ptyIn.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close pseudo console handle: %w", err)
-	}
-
-	return &conPty{
-		handle:  hpc,
-		inPipe:  inPipeOurs,
-		outPipe: outPipeOurs,
-	}, nil
-}
-
-// Close implements Pty.
-func (p *conPty) Close() error {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-
-	windows.ClosePseudoConsole(p.handle)
-	return errors.Join(p.inPipe.Close(), p.outPipe.Close())
+	return &conPty{ConPty: c}, nil
 }
 
 // Command implements Pty.
@@ -105,60 +63,17 @@ func (*conPty) Name() string {
 	return "windows-pty"
 }
 
-// Read implements Pty.
-func (p *conPty) Read(b []byte) (n int, err error) {
-	return p.outPipe.Read(b)
-}
-
-// Resize implements Pty.
-func (p *conPty) Resize(width int, height int) error {
-	p.mtx.RLock()
-	defer p.mtx.RUnlock()
-	if err := windows.ResizePseudoConsole(p.handle, windows.Coord{X: int16(width), Y: int16(height)}); err != nil {
-		return fmt.Errorf("failed to resize pseudo console: %w", err)
-	}
-	return nil
-}
-
-// Write implements Pty.
-func (p *conPty) Write(b []byte) (n int, err error) {
-	return p.inPipe.Write(b)
-}
-
 // Fd implements Pty.
 func (p *conPty) Fd() uintptr {
-	p.mtx.RLock()
-	defer p.mtx.RUnlock()
-	return uintptr(p.handle)
+	return uintptr(p.Handle())
 }
 
 // InputPipe implements ConPty.
 func (p *conPty) InputPipe() *os.File {
-	return p.inPipe
+	return p.InPipe()
 }
 
 // OutputPipe implements ConPty.
 func (p *conPty) OutputPipe() *os.File {
-	return p.outPipe
-}
-
-// updateProcThreadAttribute updates the passed in attribute list to contain the entry necessary for use with
-// CreateProcess.
-func (p *conPty) updateProcThreadAttribute(attrList *windows.ProcThreadAttributeListContainer) error {
-	p.mtx.RLock()
-	defer p.mtx.RUnlock()
-
-	if p.handle == 0 {
-		return errClosedConPty
-	}
-
-	if err := attrList.Update(
-		_PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-		unsafe.Pointer(p.handle),
-		unsafe.Sizeof(p.handle),
-	); err != nil {
-		return fmt.Errorf("failed to update proc thread attributes for pseudo console: %w", err)
-	}
-
-	return nil
+	return p.OutPipe()
 }

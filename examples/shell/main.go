@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 
 	"github.com/aymanbagabas/go-pty"
 	"golang.org/x/term"
@@ -22,7 +23,11 @@ func test() error {
 
 	defer ptmx.Close()
 
-	c := ptmx.Command(`bash`)
+	cmd := "bash"
+	if runtime.GOOS == "windows" {
+		cmd = "powershell.exe"
+	}
+	c := ptmx.Command(cmd)
 	if err := c.Start(); err != nil {
 		return err
 	}
