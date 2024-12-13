@@ -1,5 +1,5 @@
-github.com/creack/pty v1.1.21 h1:1/QdRyBaHHJP61QkWMXlOIBfsgdDeeKfK8SYVUWJKf0=
-github.com/creack/pty v1.1.21/go.mod h1:MOBLtS5ELjhRRrroQr9kyvTxUAFNvYEK993ew/Vr4O4=
+github.com/creack/pty v1.1.24 h1:bJrF4RRfyJnbTJqzRLHzcGaZK1NeM5kTC9jGgovnR1s=
+github.com/creack/pty v1.1.24/go.mod h1:08sCNb52WyoAwi2QDyzUCTgcvVFhUzewun7wtTfvcwE=
 github.com/hugelgupf/vmtest v0.0.0-20240216064925-0561770280a1 h1:jWoR2Yqg8tzM0v6LAiP7i1bikZJu3gxpgvu3g1Lw+a0=
 github.com/u-root/gobusybox/src v0.0.0-20240212035024-44ff0bf359ad h1:lUSEFqsEuc+c+sTI5jVEC0wWw0FOuXZbrYGZbxQL19E=
 github.com/u-root/u-root v0.13.1 h1:8PM83Mkd4n1mqsbbAHUx6A5ZOLDyrkgWPNN0QPj6Kbw=
