@@ -209,6 +209,9 @@ func (c *Cmd) wait() (retErr error) {
 	if retErr != nil {
 		return retErr
 	}
+	if !c.ProcessState.Success() {
+		retErr = &exec.ExitError{ProcessState: c.ProcessState}
+	}
 	return
 }
 
