@@ -6,7 +6,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/u-root/u-root v0.16.0
 	golang.org/x/crypto v0.56.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
